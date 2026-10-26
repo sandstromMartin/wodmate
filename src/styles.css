@@ -71,3 +71,28 @@
   border-radius: 8px;
   flex-shrink: 0;
 }
+
+/* Clickable brand and mobile home screen */
+.brand-home-button{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.brand-home-button:hover strong,.mobile-brand-home:hover strong{color:var(--lime)}
+.mobile-brand-home{border:0;background:transparent;color:inherit;padding:0;cursor:pointer;font:inherit}
+.mobile-brand-home .brand-logo{width:31px;height:31px;border-radius:7px}
+.home-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:30px;background:linear-gradient(125deg,#20281d,#191d19 70%);border:1px solid #384231;border-radius:16px;margin-bottom:22px}
+.home-hero h1{font:600 clamp(38px,4.3vw,58px)/1.04 'Space Grotesk',sans-serif;letter-spacing:-2.7px;margin:19px 0 13px}
+.home-hero h1 span{color:var(--lime)}
+.home-hero p{font-size:13px;color:#a5aba0;margin:0}
+.home-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}
+.home-logo-wrap{width:140px;height:140px;flex-shrink:0;display:grid;place-items:center;border:1px solid #3c4437;border-radius:25px;background:#171a17}
+.home-logo{display:block;width:100%;height:100%;object-fit:cover;border-radius:24px}
+.home-shortcuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0 36px}
+.home-shortcut{display:flex;align-items:center;gap:12px;min-width:0;padding:17px;border:1px solid #30372f;background:#191d19;color:var(--lime);border-radius:11px;text-align:left}
+.home-shortcut:hover{border-color:#687d48;background:#20271d}
+.home-shortcut>span:nth-child(2){min-width:0;flex:1}
+.home-shortcut strong,.home-shortcut small{display:block}
+.home-shortcut strong{font-size:12px;color:#f1f2ed}
+.home-shortcut small{font-size:10px;color:#92998e;margin-top:5px;line-height:1.4}
+.home-shortcut-arrow{font-size:16px;color:#92998e}
+.home-recent-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+.home-recent-heading h2{font:600 24px 'Space Grotesk';margin:8px 0 0}
+@media(max-width:820px){.home-hero{padding:23px}.home-logo-wrap{width:100px;height:100px}.home-shortcuts{grid-template-columns:1fr;gap:9px}.home-shortcut{padding:14px}}
+@media(max-width:560px){.home-hero{padding:20px 16px;gap:12px}.home-hero h1{font-size:36px;letter-spacing:-1.8px}.home-hero p{font-size:11px;line-height:1.5}.home-logo-wrap{width:66px;height:66px;border-radius:13px}.home-logo{border-radius:12px}.home-actions .button{font-size:10px;padding:0 10px}.home-recent-heading h2{font-size:21px}}
