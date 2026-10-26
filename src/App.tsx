@@ -1,319 +1,72 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Activity, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Bookmark, Check, ChevronDown,
-  CirclePlus, Clock3, Dumbbell, Flame, Heart, Link2, Plus, Search, Share2,
-  Sparkles, Trash2, Trophy, X
-} from 'lucide-react'
-import type { Difficulty, Equipment, Focus, Workout, WorkoutFormat } from './types'
-import { generateDemoWorkout } from './generator'
+import { Activity, ArrowLeft, ArrowDown, ArrowUp, ArrowUpFromLine, Bookmark, Check, Clock3, CirclePlus, Dumbbell, Heart, Link2, Plus, Search, Share2, Trash2, X, Pencil, LayoutGrid, List } from 'lucide-react'
+import type { Difficulty, Equipment, Exercise, Focus, Workout, WorkoutFormat, WorkoutSection } from './types'
 import { loadWorkouts, saveWorkouts, uid } from './storage'
 
-type Tab = 'discover' | 'library' | 'shared'
+type Tab = 'library' | 'shared' | 'exercises'
+type LibraryExercise = { id: string; name: string; category: string; equipment: string; instructions: string }
+const EXERCISES_KEY = 'wodmate.exercises.v1'
 const focuses: Focus[] = ['Styrka', 'Kondition', 'Blandat', 'Olympiska lyft', 'Gymnastics', 'Hyrox']
 const formats: WorkoutFormat[] = ['AMRAP', 'EMOM', 'For Time', 'Intervaller', 'Styrka + Metcon', 'Chipper', 'Öppet upplägg']
 const equipmentOptions: Equipment[] = ['Skivstång', 'Hantlar', 'Kettlebell', 'Roddmaskin', 'Assault bike', 'Box', 'Pull-up rig', 'Kroppsvikt', 'Hopprep']
 const categories = ['Alla pass', 'Favoriter', 'Att testa', 'Styrka', 'Kondition', 'Skivstång', 'Hyrox', 'Egna pass']
+const starterExercises: LibraryExercise[] = [
+  { id: 'ex-thruster', name: 'Thruster', category: 'Styrka / kondition', equipment: 'Skivstång', instructions: 'Knäböj följt av press över huvudet.' },
+  { id: 'ex-burpee', name: 'Burpee', category: 'Kondition', equipment: 'Kroppsvikt', instructions: 'Bröst till golv och avsluta med ett hopp.' },
+  { id: 'ex-squat', name: 'Air squat', category: 'Styrka', equipment: 'Kroppsvikt', instructions: 'Knäböj med kroppsvikt.' },
+  { id: 'ex-pullup', name: 'Pull-up', category: 'Gymnastics', equipment: 'Pull-up rig', instructions: 'Hängande drag tills hakan passerar stången.' },
+  { id: 'ex-row', name: 'Rodd', category: 'Kondition', equipment: 'Roddmaskin', instructions: 'Håll ett jämnt, kontrollerat tempo.' },
+  { id: 'ex-clean', name: 'Power clean', category: 'Olympiska lyft', equipment: 'Skivstång', instructions: 'Explosiv vändning från golvet.' },
+]
+function loadExercises(): LibraryExercise[] { try { const raw = localStorage.getItem(EXERCISES_KEY); if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed } } catch { /* defaults */ } return starterExercises }
+function safeDecodeShare(): Workout | null { try { const hash = window.location.hash; if (!hash.startsWith('#pass=')) return null; const parsed = JSON.parse(decodeURIComponent(escape(atob(hash.slice(6)))) as string) as Workout; if (!parsed?.name || !Array.isArray(parsed.sections)) return null; return { ...parsed, id: uid(), source: 'shared', favorite: false, category: 'Att testa' } } catch { return null } }
+function shareEncode(w: Workout) { return `${window.location.origin}${window.location.pathname}#pass=${btoa(unescape(encodeURIComponent(JSON.stringify(w))))}` }
 
-function safeDecodeShare(): Workout | null {
-  try {
-    const hash = window.location.hash
-    if (!hash.startsWith('#pass=')) return null
-    const json = decodeURIComponent(escape(atob(hash.slice(6))))
-    const parsed = JSON.parse(json) as Workout
-    if (!parsed || !parsed.name || !Array.isArray(parsed.sections)) return null
-    return { ...parsed, id: uid(), source: 'shared', favorite: false, category: 'Att testa' }
-  } catch {
-    return null
-  }
+export default function App() {
+ const [workouts,setWorkouts]=useState<Workout[]>(()=>loadWorkouts()), [exercises,setExercises]=useState<LibraryExercise[]>(()=>loadExercises())
+ const [tab,setTab]=useState<Tab>('library'), [selected,setSelected]=useState<Workout|null>(null), [search,setSearch]=useState(''), [filter,setFilter]=useState('Alla pass'), [toast,setToast]=useState(''), [isEditing,setIsEditing]=useState(false), [workoutView,setWorkoutView]=useState<'grid'|'list'>(()=>localStorage.getItem('wodmate.workoutView')==='list'?'list':'grid')
+ const [showManual,setShowManual]=useState(false),[manualName,setManualName]=useState(''),[manualDescription,setManualDescription]=useState('')
+ const [editName,setEditName]=useState(''),[editDescription,setEditDescription]=useState(''),[editNotes,setEditNotes]=useState(''),[editFormat,setEditFormat]=useState<WorkoutFormat>('Öppet upplägg'),[editDuration,setEditDuration]=useState(30),[editDifficulty,setEditDifficulty]=useState<Difficulty>('Medel'),[editCategory,setEditCategory]=useState('Egna pass'),[editFocus,setEditFocus]=useState<Focus[]>(['Blandat']),[editEquipment,setEditEquipment]=useState<Equipment[]>(['Kroppsvikt'])
+ const [showExerciseForm,setShowExerciseForm]=useState(false),[editingExercise,setEditingExercise]=useState<LibraryExercise|null>(null),[exerciseName,setExerciseName]=useState(''),[exerciseCategory,setExerciseCategory]=useState('Kondition'),[exerciseEquipment,setExerciseEquipment]=useState('Kroppsvikt'),[exerciseInstructions,setExerciseInstructions]=useState('')
+ const [addingToSection,setAddingToSection]=useState<string|null>(null),[chosenExercise,setChosenExercise]=useState(''),[prescription,setPrescription]=useState('10 reps'),[editingRow,setEditingRow]=useState<string|null>(null),[rowExercise,setRowExercise]=useState(''),[rowPrescription,setRowPrescription]=useState(''),[quickCreateSection,setQuickCreateSection]=useState<string|null>(null)
+ const fileInput=useRef<HTMLInputElement>(null)
+ useEffect(()=>{saveWorkouts(workouts)},[workouts]); useEffect(()=>{localStorage.setItem(EXERCISES_KEY,JSON.stringify(exercises))},[exercises]); useEffect(()=>{localStorage.setItem('wodmate.workoutView',workoutView)},[workoutView])
+ useEffect(()=>{const shared=safeDecodeShare();if(shared){openWorkout(shared);setToast('Du har öppnat ett delat pass');window.history.replaceState({},'',`${window.location.pathname}${window.location.search}`)}},[])
+ useEffect(()=>{if(!toast)return;const t=window.setTimeout(()=>setToast(''),2800);return()=>window.clearTimeout(t)},[toast])
+ const visibleWorkouts=useMemo(()=>workouts.filter(w=>{const text=`${w.name} ${w.description} ${w.focus.join(' ')} ${w.equipment.join(' ')}`.toLowerCase();const match=text.includes(search.toLowerCase());const f=filter==='Alla pass'||(filter==='Favoriter'&&w.favorite)||(filter==='Egna pass'&&w.source==='manual')||w.category===filter||(filter==='Skivstång'&&w.equipment.includes('Skivstång'))||(filter==='Hyrox'&&w.focus.includes('Hyrox'))||(filter==='Kondition'&&w.focus.includes('Kondition'))||(filter==='Styrka'&&w.focus.includes('Styrka'));return match&&f}),[workouts,search,filter])
+ const visibleExercises=useMemo(()=>exercises.filter(e=>`${e.name} ${e.category} ${e.equipment}`.toLowerCase().includes(search.toLowerCase())),[exercises,search])
+ function notify(s:string){setToast(s)}
+ function openWorkout(w:Workout){setSelected(w);setIsEditing(false);setEditName(w.name);setEditDescription(w.description);setEditNotes(w.notes);setEditFormat(w.format);setEditDuration(w.durationMinutes);setEditDifficulty(w.difficulty);setEditCategory(w.category);setEditFocus(w.focus);setEditEquipment(w.equipment)}
+ function createManualWorkout(){if(!manualName.trim()){notify('Ge passet ett namn först');return}const w:Workout={id:uid(),name:manualName.trim(),description:manualDescription.trim()||'Eget träningspass',focus:['Blandat'],format:'Öppet upplägg',durationMinutes:30,difficulty:'Medel',equipment:['Kroppsvikt'],category:'Egna pass',favorite:false,createdAt:new Date().toISOString(),source:'manual',notes:'',sections:[{id:uid(),title:'Huvudpass',format:'Öppet upplägg',exercises:[]}]};setWorkouts(c=>[w,...c]);openWorkout(w);setShowManual(false);setManualName('');setManualDescription('');notify('Passet skapat – lägg till övningar nedan')}
+ function saveEdits(){if(!selected)return;const w={...selected,name:editName.trim()||selected.name,description:editDescription,notes:editNotes,format:editFormat,durationMinutes:Math.max(1,editDuration||1),difficulty:editDifficulty,category:editCategory.trim()||'Egna pass',focus:editFocus.length?editFocus:['Blandat'] as Focus[],equipment:editEquipment};setSelected(w);setWorkouts(c=>c.some(x=>x.id===w.id)?c.map(x=>x.id===w.id?w:x):[w,...c]);notify('Ändringarna är sparade')}
+ function updateSection(id:string,fn:(s:WorkoutSection)=>WorkoutSection){if(!selected)return;const w={...selected,sections:selected.sections.map(s=>s.id===id?fn(s):s)};setSelected(w);setWorkouts(c=>c.some(x=>x.id===w.id)?c.map(x=>x.id===w.id?w:x):[w,...c])}
+ function addSection(){if(!selected)return;const w={...selected,sections:[...selected.sections,{id:uid(),title:`Del ${selected.sections.length+1}`,format:selected.format,exercises:[]}]};setSelected(w);setWorkouts(c=>c.some(x=>x.id===w.id)?c.map(x=>x.id===w.id?w:x):[w,...c])}
+ function moveSection(sectionId:string,direction:-1|1){if(!selected)return;const sections=[...selected.sections];const i=sections.findIndex(s=>s.id===sectionId);const target=i+direction;if(i<0||target<0||target>=sections.length)return;[sections[i],sections[target]]=[sections[target],sections[i]];const w={...selected,sections};setSelected(w);setWorkouts(c=>c.some(x=>x.id===w.id)?c.map(x=>x.id===w.id?w:x):[w,...c])}
+ function addExerciseToSection(){if(!selected||!addingToSection||!chosenExercise)return;const e=exercises.find(x=>x.id===chosenExercise);if(!e)return;const ex:Exercise={id:uid(),name:e.name,prescription:prescription.trim()||'Enligt upplägg',note:e.instructions};updateSection(addingToSection,s=>({...s,exercises:[...s.exercises,ex]}));setAddingToSection(null);setChosenExercise('');setPrescription('10 reps');notify(`${e.name} tillagd i passet`)}
+ function moveExercise(sectionId:string,exerciseId:string,direction:-1|1){updateSection(sectionId,s=>{const items=[...s.exercises];const i=items.findIndex(e=>e.id===exerciseId);const target=i+direction;if(i<0||target<0||target>=items.length)return s;[items[i],items[target]]=[items[target],items[i]];return {...s,exercises:items}})}
+ function startRowEdit(e:Exercise){setEditingRow(e.id);setRowExercise(exercises.find(x=>x.name===e.name)?.id??'');setRowPrescription(e.prescription)}
+ function saveRowEdit(sectionId:string,exerciseId:string){const lib=exercises.find(x=>x.id===rowExercise);if(!lib){notify('Välj en övning från biblioteket');return}updateSection(sectionId,s=>({...s,exercises:s.exercises.map(e=>e.id===exerciseId?{...e,name:lib.name,note:lib.instructions,prescription:rowPrescription.trim()||'Enligt upplägg'}:e)}));setEditingRow(null);notify('Övningen uppdaterad')}
+ function startExerciseEdit(e?:LibraryExercise){setEditingExercise(e??null);setExerciseName(e?.name??'');setExerciseCategory(e?.category??'Kondition');setExerciseEquipment(e?.equipment??'Kroppsvikt');setExerciseInstructions(e?.instructions??'');setShowExerciseForm(true)}
+ function saveExercise(){if(!exerciseName.trim()){notify('Ange ett namn på övningen');return}const e:LibraryExercise={id:editingExercise?.id??uid(),name:exerciseName.trim(),category:exerciseCategory,equipment:exerciseEquipment,instructions:exerciseInstructions.trim()};setExercises(c=>editingExercise?c.map(x=>x.id===e.id?e:x):[e,...c]);if(!editingExercise&&quickCreateSection){const ex:Exercise={id:uid(),name:e.name,prescription:'10 reps',note:e.instructions};updateSection(quickCreateSection,s=>({...s,exercises:[...s.exercises,ex]}));setQuickCreateSection(null);notify(`${e.name} skapad och tillagd i passet`)}else{notify(editingExercise?'Övningen uppdaterad':'Övningen tillagd')}setShowExerciseForm(false);setEditingExercise(null);setExerciseName('');setExerciseInstructions('')}
+ function toggleFavorite(w:Workout){const updated={...w,favorite:!w.favorite};setWorkouts(c=>c.some(x=>x.id===w.id)?c.map(x=>x.id===w.id?updated:x):[updated,...c]);if(selected?.id===w.id)setSelected(updated);notify(updated.favorite?'Tillagt bland favoriter':'Borttaget från favoriter')}
+ function deleteWorkout(w:Workout){setWorkouts(c=>c.filter(x=>x.id!==w.id));if(selected?.id===w.id)setSelected(null);notify('Passet har tagits bort')}
+ async function shareWorkout(w:Workout){const link=shareEncode(w);try{await navigator.clipboard.writeText(link);notify('Delningslänk kopierad! Skicka den till din kompis.')}catch{window.prompt('Kopiera delningslänken:',link)}}
+ function exportWorkout(w:Workout){const blob=new Blob([JSON.stringify(w,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${w.name.toLowerCase().replace(/[^a-z0-9åäö]+/gi,'-')}.json`;a.click();URL.revokeObjectURL(url);notify('Passet exporterades')}
+ function importWorkout(file?:File){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const imported=JSON.parse(String(reader.result)) as Workout;if(!imported?.name||!Array.isArray(imported.sections))throw new Error();const w={...imported,id:uid(),source:'imported' as const,category:'Att testa',favorite:false,createdAt:new Date().toISOString()};setWorkouts(c=>[w,...c]);openWorkout(w);notify('Passet importerades')}catch{notify('Filen kunde inte läsas som ett WODmate-pass')}};reader.readAsText(file);if(fileInput.current)fileInput.current.value=''}
+ function toggleFocus(f:Focus){setEditFocus(c=>c.includes(f)?c.filter(x=>x!==f):[...c,f])} function toggleEquipment(e:Equipment){setEditEquipment(c=>c.includes(e)?c.filter(x=>x!==e):[...c,e])}
+ const isSaved=selected?workouts.some(w=>w.id===selected.id):false
+ const needsSaveBeforeActions=!!selected&&selected.source==='shared'&&!isSaved
+ return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark"><Activity size={21}/></div><div><strong>WODmate</strong><span>YOUR WORKOUT LAB</span></div></div><div className="sidebar-label">MENY</div>
+ <button className={`nav-item ${tab==='library'&&!selected?'active':''}`} onClick={()=>{setTab('library');setSelected(null)}}><Bookmark size={18}/> Mina pass <span className="nav-count">{workouts.length}</span></button><button className={`nav-item ${tab==='exercises'&&!selected?'active':''}`} onClick={()=>{setTab('exercises');setSelected(null);setSearch('')}}><Dumbbell size={18}/> Övningar <span className="nav-count">{exercises.length}</span></button><button className={`nav-item ${tab==='shared'&&!selected?'active':''}`} onClick={()=>{setTab('shared');setSelected(null)}}><Share2 size={18}/> Delade/importerade</button><div className="sidebar-rule"/><div className="sidebar-label">SNABBFILTER</div>{categories.slice(1).map(c=><button key={c} className={`nav-item subnav ${filter===c?'chosen':''}`} onClick={()=>{setFilter(c);setTab('library');setSelected(null)}}><span className="category-dot"/>{c}</button>)}<div className="sidebar-bottom"><div className="profile-orb">W</div><div><strong>Träningsprofil</strong><span>Personligt bibliotek</span></div></div></aside>
+ <main className="main"><header className="topbar"><div className="mobile-brand"><div className="brand-mark"><Activity size={19}/></div><strong>WODmate</strong></div><div className="breadcrumb">WORKOUT LAB <span>/</span> {selected?'PASSDETALJER':tab==='exercises'?'ÖVNINGAR':tab==='shared'?'DELADE PASS':'MINA PASS'}</div><div className="top-actions"><span className="status-pill"><span/> MANUELL VERSION</span><button className="icon-button" onClick={()=>tab==='exercises'?startExerciseEdit():setShowManual(true)}><Plus size={18}/></button></div></header>
+ {selected?<section className="content detail-content"><button className="back-button" onClick={()=>setSelected(null)}><ArrowLeft size={16}/> Tillbaka</button><div className="detail-hero"><div className="detail-kicker"><span className="eyebrow">WOD / PASSDETALJER</span><span className="tag">{selected.format}</span></div><h1>{selected.name}</h1><p className="detail-description">{selected.description}</p><div className="detail-stats"><div><Clock3 size={17}/><span>{selected.durationMinutes} min</span></div><div><span>{selected.difficulty}</span></div><div><Dumbbell size={17}/><span>{selected.focus.join(' · ')}</span></div></div><div className="detail-actions">{needsSaveBeforeActions?<button className="button button-primary" onClick={()=>{const savedWorkout={...selected,source:'imported' as const};setSelected(savedWorkout);setWorkouts(c=>[savedWorkout,...c]);setIsEditing(false);notify('Passet sparat i ditt bibliotek')}}><Bookmark size={16}/> Spara pass</button>:<>{!isSaved&&<button className="button button-primary" onClick={()=>{setWorkouts(c=>[selected,...c]);notify('Passet sparat')}}><Bookmark size={16}/> Spara pass</button>}{isEditing?<button className="button button-primary" onClick={()=>{saveEdits();setIsEditing(false)}}><Check size={16}/> Spara och klar</button>:<button className="button button-primary" onClick={()=>setIsEditing(true)}><Pencil size={16}/> Redigera pass</button>}<button className="button button-secondary" onClick={()=>shareWorkout(selected)}><Link2 size={16}/> Dela länk</button><button className={`button button-secondary ${selected.favorite?'favorite-on':''}`} onClick={()=>toggleFavorite(selected)}><Heart size={16}/> Favorit</button><button className="button button-secondary" onClick={()=>exportWorkout(selected)}><ArrowUpFromLine size={16}/> Exportera JSON</button></>}</div></div>
+ <div className="detail-grid"><div className="workout-sections">{selected.sections.map(s=><section className="workout-section" key={s.id}><div className="section-heading"><div><span className="eyebrow">DEL AV PASSET</span><h2>{s.title}</h2></div><div className="section-heading-actions" style={{display:"flex",alignItems:"center",gap:".45rem"}}>{isEditing&&<><button className="small-icon-button" title="Flytta del upp" aria-label="Flytta del upp" disabled={selected.sections.findIndex(x=>x.id===s.id)===0} onClick={()=>moveSection(s.id,-1)}><ArrowUp size={15}/></button><button className="small-icon-button" title="Flytta del ned" aria-label="Flytta del ned" disabled={selected.sections.findIndex(x=>x.id===s.id)===selected.sections.length-1} onClick={()=>moveSection(s.id,1)}><ArrowDown size={15}/></button></>}<span className="tag">{s.format}</span></div></div>{s.instructions&&<p className="section-instructions">{s.instructions}</p>}<div className="exercise-list">{s.exercises.map((e,i)=><div className={`exercise-row ${editingRow===e.id?'is-editing':''}`} key={e.id}><span className="exercise-index">{String(i+1).padStart(2,'0')}</span><div className="exercise-main"><strong>{e.name}</strong>{e.note&&<small>{e.note}</small>}{isEditing&&editingRow===e.id?<div className="row-edit-panel"><label>Övning<select value={rowExercise} onChange={ev=>setRowExercise(ev.target.value)}><option value="">Välj från biblioteket</option>{exercises.map(lib=><option key={lib.id} value={lib.id}>{lib.name}</option>)}</select></label><label>Dosering<input value={rowPrescription} onChange={ev=>setRowPrescription(ev.target.value)} placeholder="10 reps, 200 m, 5 × 5"/></label><div className="row-edit-actions"><button className="button button-secondary" onClick={()=>setEditingRow(null)}>Avbryt</button><button className="button button-primary" onClick={()=>saveRowEdit(s.id,e.id)}><Check size={14}/> Spara</button></div></div>:isEditing?<input aria-label={`Dosering för ${e.name}`} value={e.prescription} onChange={ev=>updateSection(s.id,x=>({...x,exercises:x.exercises.map(y=>y.id===e.id?{...y,prescription:ev.target.value}:y)}))}/>:<span className="exercise-prescription">{e.prescription}</span>}</div>{isEditing&&<div className="exercise-row-actions"><button className="small-icon-button" title="Flytta upp" disabled={i===0} onClick={()=>moveExercise(s.id,e.id,-1)}><ArrowUp size={15}/></button><button className="small-icon-button" title="Flytta ned" disabled={i===s.exercises.length-1} onClick={()=>moveExercise(s.id,e.id,1)}><ArrowDown size={15}/></button><button className="small-icon-button" title="Redigera övning" onClick={()=>startRowEdit(e)}><Pencil size={15}/></button><button className="small-icon-button" title="Ta bort övning" onClick={()=>updateSection(s.id,x=>({...x,exercises:x.exercises.filter(y=>y.id!==e.id)}))}><Trash2 size={15}/></button></div>}</div>)}</div>{isEditing&&addingToSection===s.id?<div className="add-exercise-inline"><div className="inline-form-heading"><strong>Lägg till övning</strong><span>Välj en övning och ange dosering för just det här passet.</span></div><label>Välj övning<select value={chosenExercise} onChange={e=>setChosenExercise(e.target.value)}><option value="">Välj från biblioteket</option>{exercises.map(e=><option key={e.id} value={e.id}>{e.name} · {e.equipment}</option>)}</select></label><label>Repetitioner / dosering<input value={prescription} onChange={e=>setPrescription(e.target.value)} placeholder="10 reps, 200 m, 5 × 5"/></label><div className="modal-actions"><button className="button button-secondary" onClick={()=>setAddingToSection(null)}>Avbryt</button><button className="button button-primary" disabled={!chosenExercise} onClick={addExerciseToSection}><Plus size={15}/> Lägg till</button></div></div>:isEditing?<button className="button button-primary add-exercise-trigger" onClick={()=>{setAddingToSection(s.id);setChosenExercise('')}}><Plus size={15}/> Lägg till övning</button>:null}{isEditing&&addingToSection!==s.id&&<button className="button button-secondary quick-create-exercise" onClick={()=>{setQuickCreateSection(s.id);startExerciseEdit()}}><CirclePlus size={15}/> Saknas övningen? Skapa snabbt</button>}{isEditing&&<div className="section-edit-fields"><label>Delens namn<input value={s.title} onChange={e=>updateSection(s.id,x=>({...x,title:e.target.value}))}/></label><label>Format<select value={s.format} onChange={e=>updateSection(s.id,x=>({...x,format:e.target.value}))}>{formats.map(f=><option key={f}>{f}</option>)}</select></label><label>Instruktioner<textarea value={s.instructions??''} onChange={e=>updateSection(s.id,x=>({...x,instructions:e.target.value}))} rows={2}/></label></div>}</section>)}{isEditing&&<button className="button button-secondary" onClick={addSection}><Plus size={16}/> Lägg till del</button>}
+ {isEditing&&<div className="edit-card"><div className="section-heading"><div><span className="eyebrow">REDIGERA PASS</span><h2>Information</h2></div></div><label>Passnamn<input value={editName} onChange={e=>setEditName(e.target.value)}/></label><label>Beskrivning<textarea value={editDescription} onChange={e=>setEditDescription(e.target.value)} rows={2}/></label><div className="form-row"><label>Format<select value={editFormat} onChange={e=>setEditFormat(e.target.value as WorkoutFormat)}>{formats.map(f=><option key={f}>{f}</option>)}</select></label><label>Längd (min)<input type="number" min="1" value={editDuration} onChange={e=>setEditDuration(Number(e.target.value))}/></label></div><div className="form-row"><label>Nivå<select value={editDifficulty} onChange={e=>setEditDifficulty(e.target.value as Difficulty)}>{(['Nybörjare','Medel','Avancerad'] as Difficulty[]).map(d=><option key={d}>{d}</option>)}</select></label><label>Kategori<input value={editCategory} onChange={e=>setEditCategory(e.target.value)}/></label></div><label>Fokus</label><div className="equipment-options">{focuses.map(f=><button type="button" key={f} className={`equipment-option ${editFocus.includes(f)?'selected':''}`} onClick={()=>toggleFocus(f)}>{editFocus.includes(f)&&<Check size={13}/>}{f}</button>)}</div><label>Utrustning</label><div className="equipment-options">{equipmentOptions.map(e=><button type="button" key={e} className={`equipment-option ${editEquipment.includes(e)?'selected':''}`} onClick={()=>toggleEquipment(e)}>{editEquipment.includes(e)&&<Check size={13}/>}{e}</button>)}</div><label>Anteckningar<textarea value={editNotes} onChange={e=>setEditNotes(e.target.value)} rows={3}/></label><button className="button button-primary" onClick={()=>{saveEdits();setIsEditing(false)}}><Check size={16}/> Spara ändringar</button></div>}</div><aside className="detail-aside"><div className="side-card"><span className="eyebrow">UTRUSTNING</span><div className="equipment-list">{selected.equipment.map(e=><span className="equipment-chip" key={e}>{e}</span>)}</div></div><div className="side-card"><span className="eyebrow">KATEGORI</span><strong className="side-card-title">{selected.category}</strong></div>{isSaved&&<button className="delete-button" onClick={()=>deleteWorkout(selected)}><Trash2 size={15}/> Ta bort pass</button>}</aside></div></section>
+ :tab==='exercises'?<section className="content"><div className="library-heading"><div><div className="eyebrow"><span className="eyebrow-line"/> DITT ÖVNINGSBIBLIOTEK</div><h1>Dina <span>övningar.</span></h1><p>Skapa och hantera övningar som du kan återanvända i olika pass.</p></div><button className="button button-primary" onClick={()=>startExerciseEdit()}><CirclePlus size={17}/> Lägg till övning</button></div><div className="library-toolbar"><div className="search-box"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök övning, kategori eller utrustning..."/></div></div><div className="library-summary"><div><strong>{visibleExercises.length}</strong><span>övningar visas</span></div><div><strong>{new Set(exercises.map(e=>e.category)).size}</strong><span>kategorier</span></div></div><div className="exercise-library-grid">{visibleExercises.map(e=><article className="exercise-library-card" key={e.id}><div className="exercise-library-icon"><Dumbbell size={19}/></div><div className="exercise-library-main"><strong>{e.name}</strong><span>{e.category} · {e.equipment}</span>{e.instructions&&<p>{e.instructions}</p>}</div><div className="card-buttons"><button className="small-icon-button" title="Redigera" onClick={()=>startExerciseEdit(e)}><Pencil size={15}/></button><button className="small-icon-button" title="Ta bort" onClick={()=>{if(confirm(`Ta bort ${e.name} från övningsbiblioteket?`)){setExercises(c=>c.filter(x=>x.id!==e.id));notify('Övningen borttagen')}}}><Trash2 size={15}/></button></div></article>)}</div></section>
+ :<section className="content"><div className="library-heading"><div><div className="eyebrow"><span className="eyebrow-line"/> DITT TRÄNINGSARKIV</div><h1>{tab==='shared'?'Delade':'Dina'} <span>pass.</span></h1><p>{tab==='shared'?'Pass du importerat från andra.':'Skapa pass manuellt och dela med kompisar.'}</p></div><button className="button button-primary" onClick={()=>setShowManual(true)}><CirclePlus size={17}/> Skapa eget pass</button></div><div className="library-toolbar"><div className="search-box"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök pass, fokus eller utrustning..."/></div><select value={filter} onChange={e=>setFilter(e.target.value)}>{categories.map(c=><option key={c}>{c}</option>)}</select><button className="button button-secondary" onClick={()=>fileInput.current?.click()}><ArrowUpFromLine size={16}/> Importera JSON</button><input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={e=>importWorkout(e.target.files?.[0])}/></div><div className="library-summary"><div><strong>{visibleWorkouts.length}</strong><span>pass visas</span></div><div><strong>{workouts.filter(w=>w.favorite).length}</strong><span>favoriter</span></div><div><strong>{exercises.length}</strong><span>övningar</span></div><div className="view-toggle" role="group" aria-label="Visningsläge"><button className={workoutView==='grid'?'active':''} aria-label="Rutnätsläge" title="Rutnätsläge" onClick={()=>setWorkoutView('grid')}><LayoutGrid size={16}/></button><button className={workoutView==='list'?'active':''} aria-label="Listläge" title="Listläge" onClick={()=>setWorkoutView('list')}><List size={16}/></button></div></div>{visibleWorkouts.filter(w=>tab!=='shared'||['shared','imported'].includes(w.source)).length?<div className={`workout-cards library-cards ${workoutView==='list'?'workout-list-view':''}`}>{visibleWorkouts.filter(w=>tab!=='shared'||['shared','imported'].includes(w.source)).map(w=><WorkoutCard key={w.id} workout={w} onOpen={openWorkout} onFavorite={toggleFavorite} onShare={shareWorkout}/>)}</div>:<div className="empty-state"><h2>Inga pass här ännu</h2><p>Skapa ett pass eller importera en fil från en kompis.</p><button className="button button-primary" onClick={()=>setShowManual(true)}>Skapa pass</button></div>}<div className="import-hint"><Share2 size={17}/><div><strong>Dela med en kompis</strong><span>Öppna ett pass och välj Dela länk. Kompisen kan spara en egen kopia och redigera den.</span></div></div></section>}
+ <footer className="footer"><span>WODmate <span className="footer-dot">•</span> BUILD YOUR NEXT WOD</span><span>TRÄNA SMART. HÅLL DIG I RÖRELSE.</span></footer></main>
+ {showManual&&<div className="modal-backdrop" onClick={()=>setShowManual(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">DITT BIBLIOTEK</span><h2>Skapa eget pass</h2></div><button className="icon-button" onClick={()=>setShowManual(false)}><X size={18}/></button></div><label>Passnamn<input autoFocus value={manualName} onChange={e=>setManualName(e.target.value)} placeholder="Ex. Friday Night Lights"/></label><label>Kort beskrivning<textarea value={manualDescription} onChange={e=>setManualDescription(e.target.value)} rows={3}/></label><div className="modal-actions"><button className="button button-secondary" onClick={()=>setShowManual(false)}>Avbryt</button><button className="button button-primary" onClick={createManualWorkout}><Plus size={16}/> Skapa pass</button></div></div></div>}
+ {showExerciseForm&&<div className="modal-backdrop" onClick={()=>{setShowExerciseForm(false);setQuickCreateSection(null)}}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">ÖVNINGSBIBLIOTEK</span><h2>{editingExercise?'Redigera övning':quickCreateSection?'Skapa övning till passet':'Lägg till övning'}</h2></div><button className="icon-button" onClick={()=>{setShowExerciseForm(false);setQuickCreateSection(null)}}><X size={18}/></button></div><label>Namn<input autoFocus value={exerciseName} onChange={e=>setExerciseName(e.target.value)} placeholder="Ex. Deadlift"/></label><label>Kategori<select value={exerciseCategory} onChange={e=>setExerciseCategory(e.target.value)}>{['Styrka','Kondition','Olympiska lyft','Gymnastics','Rörlighet','Styrka / kondition','Hyrox','Övrigt'].map(c=><option key={c}>{c}</option>)}</select></label><label>Utrustning<select value={exerciseEquipment} onChange={e=>setExerciseEquipment(e.target.value)}>{[...equipmentOptions,'Ingen','Annat'].map(e=><option key={e}>{e}</option>)}</select></label><label>Instruktioner / anteckningar<textarea value={exerciseInstructions} onChange={e=>setExerciseInstructions(e.target.value)} rows={3}/></label><div className="modal-actions"><button className="button button-secondary" onClick={()=>{setShowExerciseForm(false);setQuickCreateSection(null)}}>Avbryt</button><button className="button button-primary" onClick={saveExercise}><Check size={16}/> Spara övning</button></div></div></div>}
+ {toast&&<div className="toast"><Check size={16}/>{toast}</div>}</div>
 }
-
-function shareEncode(workout: Workout) {
-  const json = JSON.stringify(workout)
-  return `${window.location.origin}${window.location.pathname}#pass=${btoa(unescape(encodeURIComponent(json)))}`
-}
-
-function App() {
-  const [workouts, setWorkouts] = useState<Workout[]>(() => loadWorkouts())
-  const [tab, setTab] = useState<Tab>('discover')
-  const [selected, setSelected] = useState<Workout | null>(null)
-  const [focus, setFocus] = useState<Focus>('Blandat')
-  const [format, setFormat] = useState<WorkoutFormat>('AMRAP')
-  const [duration, setDuration] = useState(20)
-  const [difficulty, setDifficulty] = useState<Difficulty>('Medel')
-  const [equipment, setEquipment] = useState<Equipment[]>(['Kroppsvikt', 'Skivstång', 'Box'])
-  const [prompt, setPrompt] = useState('')
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('Alla pass')
-  const [toast, setToast] = useState('')
-  const [showManual, setShowManual] = useState(false)
-  const [manualName, setManualName] = useState('')
-  const [manualDescription, setManualDescription] = useState('')
-  const [editName, setEditName] = useState('')
-  const [editNotes, setEditNotes] = useState('')
-  const fileInput = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { saveWorkouts(workouts) }, [workouts])
-  useEffect(() => {
-    const shared = safeDecodeShare()
-    if (shared) {
-      setSelected(shared)
-      setToast('Du har öppnat ett delat pass')
-      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const timer = window.setTimeout(() => setToast(''), 2800)
-    return () => window.clearTimeout(timer)
-  }, [toast])
-
-  const visibleWorkouts = useMemo(() => workouts.filter((workout) => {
-    const matchesSearch = `${workout.name} ${workout.description} ${workout.focus.join(' ')} ${workout.equipment.join(' ')}`
-      .toLowerCase().includes(search.toLowerCase())
-    const matchesFilter = filter === 'Alla pass'
-      || (filter === 'Favoriter' && workout.favorite)
-      || (filter === 'Egna pass' && workout.source === 'manual')
-      || workout.category === filter
-      || (filter === 'Skivstång' && workout.equipment.includes('Skivstång'))
-      || (filter === 'Hyrox' && workout.focus.includes('Hyrox'))
-      || (filter === 'Kondition' && workout.focus.includes('Kondition'))
-      || (filter === 'Styrka' && workout.focus.includes('Styrka'))
-    return matchesSearch && matchesFilter
-  }), [workouts, search, filter])
-
-  const savedCount = workouts.length
-  const favoriteCount = workouts.filter((w) => w.favorite).length
-
-  function notify(message: string) { setToast(message) }
-
-  function createWorkout() {
-    const workout = generateDemoWorkout({ focus, format, duration, difficulty, equipment, prompt })
-    setSelected(workout)
-    setEditName(workout.name)
-    setEditNotes(workout.notes)
-  }
-
-  function saveWorkout(workout: Workout) {
-    setWorkouts((current) => {
-      const exists = current.some((item) => item.id === workout.id)
-      return exists ? current.map((item) => item.id === workout.id ? workout : item) : [workout, ...current]
-    })
-    setSelected(workout)
-    notify('Passet är sparat i Mina pass')
-  }
-
-  function toggleFavorite(workout: Workout) {
-    const updated = { ...workout, favorite: !workout.favorite }
-    setWorkouts((current) => current.some((item) => item.id === workout.id)
-      ? current.map((item) => item.id === workout.id ? updated : item)
-      : [updated, ...current])
-    if (selected?.id === workout.id) setSelected(updated)
-    notify(updated.favorite ? 'Tillagt bland favoriter' : 'Borttaget från favoriter')
-  }
-
-  function deleteWorkout(workout: Workout) {
-    setWorkouts((current) => current.filter((item) => item.id !== workout.id))
-    if (selected?.id === workout.id) setSelected(null)
-    notify('Passet har tagits bort')
-  }
-
-  function createManualWorkout() {
-    if (!manualName.trim()) { notify('Ge passet ett namn först'); return }
-    const workout: Workout = {
-      id: uid(), name: manualName.trim(), description: manualDescription.trim() || 'Eget träningspass',
-      focus: ['Blandat'], format: 'Öppet upplägg', durationMinutes: 30, difficulty: 'Medel',
-      equipment: ['Kroppsvikt'], category: 'Egna pass', favorite: false,
-      createdAt: new Date().toISOString(), source: 'manual', notes: '',
-      sections: [{ id: uid(), title: 'Huvudpass', format: 'Öppet upplägg', exercises: [{ id: uid(), name: 'Lägg till övningar', prescription: 'Redigera passet' }] }]
-    }
-    setWorkouts((current) => [workout, ...current])
-    setSelected(workout)
-    setEditName(workout.name)
-    setEditNotes(workout.notes)
-    setShowManual(false)
-    setManualName('')
-    setManualDescription('')
-    notify('Ett nytt pass har skapats')
-  }
-
-  function saveEdits() {
-    if (!selected) return
-    const updated = { ...selected, name: editName.trim() || selected.name, notes: editNotes }
-    setSelected(updated)
-    setWorkouts((current) => {
-      const exists = current.some((item) => item.id === updated.id)
-      return exists ? current.map((item) => item.id === updated.id ? updated : item) : current
-    })
-    notify('Ändringarna är sparade')
-  }
-
-  function exportWorkout(workout: Workout) {
-    const blob = new Blob([JSON.stringify(workout, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${workout.name.toLowerCase().replace(/[^a-z0-9åäö]+/gi, '-')}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    notify('Passet har exporterats')
-  }
-
-  function importWorkout(file?: File) {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        const imported = JSON.parse(String(reader.result)) as Workout
-        if (!imported?.name || !Array.isArray(imported.sections)) throw new Error('Ogiltigt pass')
-        const workout = { ...imported, id: uid(), source: 'imported' as const, category: 'Att testa', favorite: false, createdAt: new Date().toISOString() }
-        setWorkouts((current) => [workout, ...current])
-        setSelected(workout)
-        notify('Passet har importerats')
-      } catch {
-        notify('Filen kunde inte läsas som ett WODmate-pass')
-      }
-    }
-    reader.readAsText(file)
-    if (fileInput.current) fileInput.current.value = ''
-  }
-
-  async function shareWorkout(workout: Workout) {
-    const link = shareEncode(workout)
-    try {
-      await navigator.clipboard.writeText(link)
-      notify('Delningslänk kopierad!')
-    } catch {
-      window.prompt('Kopiera delningslänken:', link)
-    }
-  }
-
-  function toggleEquipment(item: Equipment) {
-    setEquipment((current) => current.includes(item) ? current.filter((x) => x !== item) : [...current, item])
-  }
-
-  function openWorkout(workout: Workout) {
-    setSelected(workout)
-    setEditName(workout.name)
-    setEditNotes(workout.notes)
-  }
-
-  const isSaved = selected ? workouts.some((w) => w.id === selected.id) : false
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><Activity size={21} strokeWidth={2.7} /></div><div><strong>WODmate</strong><span>YOUR WORKOUT LAB</span></div></div>
-        <div className="sidebar-label">MENY</div>
-        <button className={`nav-item ${tab === 'discover' ? 'active' : ''}`} onClick={() => { setTab('discover'); setSelected(null) }}><Sparkles size={18} /> Upptäck <span className="nav-dot" /></button>
-        <button className={`nav-item ${tab === 'library' ? 'active' : ''}`} onClick={() => { setTab('library'); setSelected(null) }}><Bookmark size={18} /> Mina pass <span className="nav-count">{savedCount}</span></button>
-        <button className={`nav-item ${tab === 'shared' ? 'active' : ''}`} onClick={() => { setTab('shared'); setSelected(null) }}><Share2 size={18} /> Delade pass</button>
-        <div className="sidebar-rule" />
-        <div className="sidebar-label">SNABBFILTER</div>
-        {categories.slice(1).map((category) => <button key={category} className={`nav-item subnav ${filter === category ? 'chosen' : ''}`} onClick={() => { setFilter(category); setTab('library'); setSelected(null) }}><span className={`category-dot dot-${category.toLowerCase().replace(' ', '-')}`} />{category}</button>)}
-        <div className="sidebar-bottom"><div className="profile-orb">W</div><div><strong>Träningsprofil</strong><span>Personligt bibliotek</span></div><ChevronDown size={16} /></div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <div className="mobile-brand"><div className="brand-mark"><Activity size={19} /></div><strong>WODmate</strong></div>
-          <div className="breadcrumb">WORKOUT LAB <span>/</span> {selected ? 'PASSDETALJER' : tab === 'discover' ? 'UPPTÄCK' : tab === 'library' ? 'MINA PASS' : 'DELADE PASS'}</div>
-          <div className="top-actions"><span className="status-pill"><span /> PROTOTYP</span><button className="icon-button" title="Skapa pass manuellt" onClick={() => setShowManual(true)}><Plus size={18} /></button></div>
-        </header>
-
-        {selected ? (
-          <section className="content detail-content">
-            <button className="back-button" onClick={() => setSelected(null)}><ArrowLeft size={16} /> Tillbaka</button>
-            <div className="detail-hero">
-              <div className="detail-kicker"><span className="eyebrow">WOD / PASSDETALJER</span><span className="tag">{selected.format}</span></div>
-              <h1>{selected.name}</h1>
-              <p className="detail-description">{selected.description}</p>
-              <div className="detail-stats">
-                <div><Clock3 size={17} /><span>{selected.durationMinutes} min</span></div>
-                <div><Flame size={17} /><span>{selected.difficulty}</span></div>
-                <div><Dumbbell size={17} /><span>{selected.focus.join(' · ')}</span></div>
-              </div>
-              <div className="detail-actions">
-                {!isSaved && <button className="button button-primary" onClick={() => saveWorkout(selected)}><Bookmark size={16} /> Spara pass</button>}
-                <button className="button button-secondary" onClick={() => shareWorkout(selected)}><Link2 size={16} /> Dela länk</button>
-                <button className={`button button-secondary ${selected.favorite ? 'favorite-on' : ''}`} onClick={() => toggleFavorite(selected)}><Heart size={16} fill={selected.favorite ? 'currentColor' : 'none'} /> Favorit</button>
-                <button className="button button-secondary" onClick={() => exportWorkout(selected)}><ArrowDownToLine size={16} /> Exportera JSON</button>
-              </div>
-            </div>
-            <div className="detail-grid">
-              <div className="workout-sections">
-                {selected.sections.map((section) => <section className="workout-section" key={section.id}>
-                  <div className="section-heading"><div><span className="eyebrow">DEL AV PASSET</span><h2>{section.title}</h2></div><span className="tag">{section.format}</span></div>
-                  {section.instructions && <p className="section-instructions">{section.instructions}</p>}
-                  <div className="exercise-list">{section.exercises.map((exercise, index) => <div className="exercise-row" key={exercise.id}><span className="exercise-index">{String(index + 1).padStart(2, '0')}</span><div className="exercise-main"><strong>{exercise.name}</strong>{exercise.note && <small>{exercise.note}</small>}</div><span className="exercise-prescription">{exercise.prescription}</span></div>)}</div>
-                  {section.durationMinutes && <div className="section-footer"><Clock3 size={14} /> {section.durationMinutes} min</div>}
-                </section>)}
-                <div className="edit-card">
-                  <div className="section-heading"><div><span className="eyebrow">PERSONLIGT</span><h2>Anteckningar & namn</h2></div></div>
-                  <label>Passnamn<input value={editName} onChange={(e) => setEditName(e.target.value)} /></label>
-                  <label>Anteckningar<textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} placeholder="Skalning, vikter, egna tips..." /></label>
-                  <button className="button button-primary" onClick={saveEdits}><Check size={16} /> Spara ändringar</button>
-                </div>
-              </div>
-              <aside className="detail-aside">
-                <div className="side-card"><span className="eyebrow">UTRUSTNING</span><div className="equipment-list">{selected.equipment.map((item) => <span className="equipment-chip" key={item}>{item}</span>)}</div></div>
-                <div className="side-card"><span className="eyebrow">KATEGORI</span><strong className="side-card-title">{selected.category}</strong><span className="muted-text">Skapad {new Date(selected.createdAt).toLocaleDateString('sv-SE')}</span></div>
-                <div className="side-card tip-card"><div className="tip-icon"><Trophy size={18} /></div><strong>Träna smart</strong><p>Välj belastning som låter dig behålla god teknik genom hela passet. Skala vid behov.</p></div>
-                {isSaved && <button className="delete-button" onClick={() => deleteWorkout(selected)}><Trash2 size={15} /> Ta bort från Mina pass</button>}
-              </aside>
-            </div>
-          </section>
-        ) : tab === 'discover' ? (
-          <section className="content">
-            <div className="hero-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> DIN PERSONLIGA WOD-GENERATOR</div><h1>Vad är du sugen<br />på <span>idag?</span></h1><p>Hitta nästa pass. Bygg din rutin. Dela energin.</p></div><div className="hero-stamp"><span>WOD</span><strong>01</strong><small>WORKOUT<br />OF THE DAY</small></div></div>
-            <div className="generator-layout">
-              <div className="generator-card">
-                <div className="card-title"><div className="title-icon"><Sparkles size={19} /></div><div><h2>Skapa ditt pass</h2><p>Finjustera eller låt dig överraskas.</p></div><span className="step-label">01 / 02</span></div>
-                <div className="form-block"><label className="field-label">VAD VILL DU FOKUSERA PÅ?</label><div className="focus-grid">{focuses.map((item) => <button key={item} className={`focus-option ${focus === item ? 'selected' : ''}`} onClick={() => setFocus(item)}>{item === 'Styrka' ? <Dumbbell size={17} /> : item === 'Kondition' ? <Activity size={17} /> : item === 'Hyrox' ? <Flame size={17} /> : <Trophy size={17} />}{item}</button>)}</div></div>
-                <div className="form-row">
-                  <div className="form-block"><label className="field-label">UPPLÄGG</label><select value={format} onChange={(e) => setFormat(e.target.value as WorkoutFormat)}>{formats.map((item) => <option key={item}>{item}</option>)}</select></div>
-                  <div className="form-block"><label className="field-label">NIVÅ</label><select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>{(['Nybörjare', 'Medel', 'Avancerad'] as Difficulty[]).map((item) => <option key={item}>{item}</option>)}</select></div>
-                </div>
-                <div className="form-block duration-block"><div className="duration-head"><label className="field-label">HUR LÅNGT PASS?</label><strong>{duration} <small>MIN</small></strong></div><input className="range-input" type="range" min="10" max="60" step="5" value={duration} onChange={(e) => setDuration(Number(e.target.value))} /><div className="range-labels"><span>10 min</span><span>60 min</span></div></div>
-                <div className="form-block"><label className="field-label">TILLGÄNGLIG UTRUSTNING</label><div className="equipment-options">{equipmentOptions.map((item) => <button key={item} className={`equipment-option ${equipment.includes(item) ? 'selected' : ''}`} onClick={() => toggleEquipment(item)}>{equipment.includes(item) && <Check size={13} />}{item}</button>)}</div></div>
-                <div className="form-block"><label className="field-label">BESKRIV DITT PASS <span className="optional">VALFRITT</span></label><textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="Ex. Jag vill ha ett riktigt flåsigt pass med skivstång och box jumps, men inga burpees..." /></div>
-                <button className="button button-primary generate-button" onClick={createWorkout}><Sparkles size={17} /> Generera pass <span>↗</span></button>
-                <p className="demo-note">Demo-generator just nu · AI-koppling läggs till i nästa steg</p>
-              </div>
-              <aside className="inspiration-column">
-                <div className="inspiration-title"><div><span className="eyebrow">SNABBSTART</span><h2>Behöver du inspo?</h2></div><span className="sparkle-mark">✳</span></div>
-                <button className="inspiration-card orange" onClick={() => { setFocus('Kondition'); setFormat('AMRAP'); setDuration(15); setEquipment(['Kroppsvikt', 'Roddmaskin']); setPrompt('Ett kort, flåsigt pass med jämnt tempo.'); }}><div className="inspiration-card-top"><span>01 / ENGINE</span><Activity size={18} /></div><strong>Quick & Sweaty</strong><p>15 minuter · Kondition</p><span className="card-arrow">↗</span></button>
-                <button className="inspiration-card lime" onClick={() => { setFocus('Olympiska lyft'); setFormat('Öppet upplägg'); setDuration(30); setEquipment(['Skivstång']); setPrompt('Fokus på teknik och explosivitet, inte maxvikt.'); }}><div className="inspiration-card-top"><span>02 / BARBELL</span><Dumbbell size={18} /></div><strong>Barbell Practice</strong><p>30 minuter · Teknik</p><span className="card-arrow">↗</span></button>
-                <button className="inspiration-card dark" onClick={() => { setFocus('Hyrox'); setFormat('Intervaller'); setDuration(35); setEquipment(['Roddmaskin', 'Kroppsvikt', 'Kettlebell']); setPrompt('Hyrox-inspirerat upplägg utan löpning.'); }}><div className="inspiration-card-top"><span>03 / HYBRID</span><Flame size={18} /></div><strong>Race Ready</strong><p>35 minuter · Hybrid</p><span className="card-arrow">↗</span></button>
-                <div className="mini-stat"><div className="mini-stat-icon"><Bookmark size={18} /></div><div><strong>{savedCount} sparade pass</strong><span>{favoriteCount} favoriter i ditt bibliotek</span></div><button onClick={() => { setTab('library'); setSelected(null) }} aria-label="Visa sparade pass">↗</button></div>
-              </aside>
-            </div>
-            <section className="recent-section"><div className="section-heading"><div><span className="eyebrow">DINA SENASTE</span><h2>Plocka upp tråden</h2></div><button className="text-button" onClick={() => { setTab('library'); setSelected(null) }}>Visa alla pass <span>↗</span></button></div><div className="workout-cards">{workouts.slice(0, 3).map((workout) => <WorkoutCard key={workout.id} workout={workout} onOpen={openWorkout} onFavorite={toggleFavorite} />)}</div></section>
-          </section>
-        ) : (
-          <section className="content">
-            <div className="library-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> DITT TRÄNINGSARKIV</div><h1>{tab === 'shared' ? 'Delade <span>pass.</span>' : 'Dina <span>pass.</span>'}</h1><p>{tab === 'shared' ? 'Pass du öppnat eller importerat från andra.' : 'All inspiration samlad på ett ställe.'}</p></div><button className="button button-primary" onClick={() => setShowManual(true)}><CirclePlus size={17} /> Skapa eget pass</button></div>
-            <div className="library-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Sök pass, fokus eller utrustning..." /></div><select value={filter} onChange={(e) => setFilter(e.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select><button className="button button-secondary" onClick={() => fileInput.current?.click()}><ArrowUpFromLine size={16} /> Importera</button><input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => importWorkout(e.target.files?.[0])} /></div>
-            <div className="library-summary"><div><strong>{visibleWorkouts.length}</strong><span>pass visas</span></div><div><strong>{favoriteCount}</strong><span>favoriter</span></div><div><strong>{new Set(workouts.map((w) => w.category)).size}</strong><span>kategorier</span></div></div>
-            {visibleWorkouts.length ? <div className="workout-cards library-cards">{visibleWorkouts.map((workout) => <WorkoutCard key={workout.id} workout={workout} onOpen={openWorkout} onFavorite={toggleFavorite} onShare={shareWorkout} />)}</div> : <div className="empty-state"><div className="empty-icon"><Bookmark size={23} /></div><h2>Inga pass här ännu</h2><p>Skapa ett nytt pass eller importera en JSON-fil från en kompis.</p><button className="button button-primary" onClick={() => { setTab('discover'); setSelected(null) }}>Hitta ett pass</button></div>}
-            <div className="import-hint"><Share2 size={17} /><div><strong>Få ett pass från en kompis?</strong><span>Öppna delningslänken eller importera en .json-fil så läggs passet till i ditt bibliotek.</span></div></div>
-          </section>
-        )}
-        <footer className="footer"><span>WODmate <span className="footer-dot">•</span> BUILD YOUR NEXT WOD</span><span>TRÄNA SMART. HÅLL DIG I RÖRELSE.</span></footer>
-      </main>
-
-      {showManual && <div className="modal-backdrop" onClick={() => setShowManual(false)}><div className="modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">DITT BIBLIOTEK</span><h2>Skapa eget pass</h2></div><button className="icon-button" onClick={() => setShowManual(false)}><X size={18} /></button></div><label>Passnamn<input autoFocus value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Ex. Friday Night Lights" /></label><label>Kort beskrivning<textarea value={manualDescription} onChange={(e) => setManualDescription(e.target.value)} placeholder="Vad är tanken med passet?" rows={3} /></label><div className="modal-actions"><button className="button button-secondary" onClick={() => setShowManual(false)}>Avbryt</button><button className="button button-primary" onClick={createManualWorkout}><Plus size={16} /> Skapa pass</button></div></div></div>}
-      {toast && <div className="toast"><Check size={16} />{toast}</div>}
-    </div>
-  )
-}
-
-function WorkoutCard({ workout, onOpen, onFavorite, onShare }: { workout: Workout; onOpen: (workout: Workout) => void; onFavorite: (workout: Workout) => void; onShare?: (workout: Workout) => void }) {
-  const tone = workout.focus.includes('Styrka') || workout.focus.includes('Olympiska lyft') ? 'card-tone-lime' : workout.focus.includes('Hyrox') ? 'card-tone-dark' : 'card-tone-orange'
-  return <article className="workout-card">
-    <button className={`workout-card-art ${tone}`} onClick={() => onOpen(workout)} aria-label={`Öppna ${workout.name}`}><span className="art-label">{workout.focus[0] ?? 'CrossFit'}</span><div className="art-shape"><Activity size={35} /></div><span className="art-time"><Clock3 size={13} /> {workout.durationMinutes} MIN</span></button>
-    <div className="workout-card-body"><div className="card-meta"><span>{workout.format}</span><span>·</span><span>{workout.difficulty}</span></div><button className="workout-card-name" onClick={() => onOpen(workout)}>{workout.name}</button><p>{workout.description}</p><div className="card-bottom"><span className="equipment-summary">{workout.equipment.slice(0, 2).join(' · ')}</span><div className="card-buttons"><button className={`small-icon-button ${workout.favorite ? 'favorite-on' : ''}`} title="Favorit" onClick={() => onFavorite(workout)}><Heart size={16} fill={workout.favorite ? 'currentColor' : 'none'} /></button>{onShare && <button className="small-icon-button" title="Dela pass" onClick={() => onShare(workout)}><Share2 size={16} /></button>}<button className="small-icon-button open-arrow" title="Öppna pass" onClick={() => onOpen(workout)}>↗</button></div></div></div>
-  </article>
-}
-
-export default App
+function WorkoutCard({workout,onOpen,onFavorite,onShare}:{workout:Workout;onOpen:(w:Workout)=>void;onFavorite:(w:Workout)=>void;onShare?:(w:Workout)=>void}){const tone=workout.focus.includes('Styrka')||workout.focus.includes('Olympiska lyft')?'card-tone-lime':workout.focus.includes('Hyrox')?'card-tone-dark':'card-tone-orange';return <article className="workout-card"><button className={`workout-card-art ${tone}`} onClick={()=>onOpen(workout)}><span className="art-label">{workout.focus[0]??'CrossFit'}</span><div className="art-shape"><Activity size={35}/></div><span className="art-time"><Clock3 size={13}/> {workout.durationMinutes} MIN</span></button><div className="workout-card-body"><div className="card-meta"><span>{workout.format}</span><span>·</span><span>{workout.difficulty}</span></div><button className="workout-card-name" onClick={()=>onOpen(workout)}>{workout.name}</button><p>{workout.description}</p><div className="card-bottom"><span className="equipment-summary">{workout.equipment.slice(0,2).join(' · ')}</span><div className="card-buttons"><button className={`small-icon-button ${workout.favorite?'favorite-on':''}`} title="Favorit" onClick={()=>onFavorite(workout)}><Heart size={16} fill={workout.favorite?'currentColor':'none'}/></button>{onShare&&<button className="small-icon-button" title="Dela pass" onClick={()=>onShare(workout)}><Share2 size={16}/></button>}<button className="small-icon-button open-arrow" title="Öppna pass" onClick={()=>onOpen(workout)}>↗</button></div></div></div></article>}
