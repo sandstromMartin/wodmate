@@ -62,3 +62,12 @@
 .workout-list-view .card-bottom{grid-column:2;grid-row:1/4;flex-direction:column;align-items:flex-end;justify-content:center;border-top:0;margin:0;padding:0;gap:8px}
 .workout-list-view .equipment-summary{max-width:180px}
 @media(max-width:560px){.workout-list-view .workout-card{grid-template-columns:76px minmax(0,1fr)}.workout-list-view .workout-card-body{padding:9px;column-gap:8px}.workout-list-view .workout-card-body>p{font-size:9px}.workout-list-view .card-bottom{gap:4px}.workout-list-view .equipment-summary{display:none}.view-toggle{margin-left:auto}}
+
+.brand-logo {
+  display: block;
+  width: 38px;
+  height: 38px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
