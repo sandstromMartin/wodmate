@@ -199,3 +199,8 @@
   .presentation-nav>span{font-size:10px}
   .presentation-nav small{font-size:8px}
 }
+
+
+/* Open shared workout by pasting its link */
+.share-link-description{font-size:12px;line-height:1.6;color:#a5ad9e;margin:16px 0 8px}.share-link-input{direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px!important;min-width:0}.share-link-error{font-size:11px;line-height:1.5;color:#ff9a7b;margin:10px 0 0}.share-link-modal .modal-actions{margin-top:20px}
+@media(max-width:560px){.share-link-modal{width:100%;padding:19px}.share-link-input{font-size:16px!important}}
