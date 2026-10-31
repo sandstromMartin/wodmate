@@ -238,3 +238,20 @@ html,body,#root{max-width:100%;overflow-x:hidden}
   .library-toolbar .button{flex:1 1 calc(50% - 7px);font-size:10px;padding:0 8px}
   .library-toolbar select{flex:1 1 100%;max-width:none}
 }
+
+
+/* WODmate workout cards: alternate lime and forest green, no orange */
+.workout-cards .workout-card:nth-child(odd) .workout-card-art {
+  background: var(--lime);
+  color: #1b2412;
+}
+.workout-cards .workout-card:nth-child(even) .workout-card-art {
+  background: #303c2c;
+  color: #d5ff62;
+}
+
+
+/* Share current workout directly from browse presentation */
+.presentation-share{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 11px;border:1px solid #53673a;border-radius:9px;background:#20291c;color:var(--lime);font:600 12px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
+.presentation-share:hover{background:#2b3823;border-color:var(--lime);}
+@media(max-width:390px){.presentation-share{font-size:10px;padding:0 7px;gap:4px}.presentation-share svg{width:13px;height:13px}}
